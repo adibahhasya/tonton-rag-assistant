@@ -10,7 +10,7 @@ The chatbot answers Tonton-related customer enquiries using information retrieve
 - FAQ-based semantic chunking
 - Multilingual text embeddings
 - Semantic search using ChromaDB
-- RAG-based answer generation
+- RAG-based grounded answer generation
 - Gemini Flash integration
 - Malay, English, and mixed-language support
 - Tonton-only scope guardrails
@@ -66,7 +66,7 @@ Therefore:
 1 FAQ = 1 semantic chunk
 ```
 
-This keeps each question together with its corresponding answer.
+This preserves the relationship between each question and its corresponding answer.
 
 ### 3. Embeddings
 
@@ -76,9 +76,9 @@ The project uses:
 paraphrase-multilingual-MiniLM-L12-v2
 ```
 
-This multilingual Sentence Transformer model allows semantic retrieval across Malay, English, and mixed-language queries.
+This multilingual Sentence Transformer model enables semantic retrieval across Malay, English, and mixed-language queries.
 
-For example, these questions can retrieve the same relevant FAQ:
+For example, these queries can retrieve the same relevant FAQ:
 
 ```text
 Saya telah melanggan tetapi kenapa masih mempunyai iklan?
@@ -92,15 +92,61 @@ Why am I still getting ads after subscribing?
 
 FAQ embeddings are stored in **ChromaDB**.
 
-When a user submits a question, the query is embedded using the same embedding model and compared against the FAQ vectors using cosine similarity.
+When a user submits a question, the query is embedded using the same multilingual embedding model and compared against the FAQ vectors using cosine similarity.
 
-The most relevant FAQ chunks are then retrieved.
+The **Top-K most relevant FAQ chunks** are then retrieved.
 
 ### 5. Response Generation
 
 The retrieved FAQ context and user question are passed to Gemini.
 
-The model is instructed to answer only using the supplied Tonton FAQ context to reduce unsupported or hallucinated answers.
+Gemini is instructed to generate its response using only the retrieved Tonton FAQ context, helping reduce unsupported or hallucinated answers.
+
+---
+
+## 🤖 Gemini Model Selection
+
+The assessment preferably requested the use of the **Gemini 2.5 Flash API**.
+
+The initial implementation was therefore configured to use:
+
+```text
+gemini-2.5-flash
+```
+
+However, during development, the Gemini API returned the following response for the API access used in this project:
+
+```text
+404 NOT_FOUND
+
+This model models/gemini-2.5-flash is no longer available to new users.
+Please update your code to use models/gemini-3.6-flash for the latest
+features and improvements.
+```
+
+Therefore, the final implementation uses:
+
+```text
+gemini-3.6-flash
+```
+
+This migration only changes the **generation model**. The underlying RAG architecture remains unchanged:
+
+```text
+User Query
+     ↓
+Multilingual Query Embedding
+     ↓
+ChromaDB Semantic Retrieval
+     ↓
+Relevant Tonton FAQ Context
+     ↓
+Gemini 3.6 Flash
+     ↓
+Grounded Response
+```
+
+The retrieval strategy, embedding model, vector store, knowledge source, and grounding approach remain the same.
 
 ---
 
@@ -128,6 +174,8 @@ TontonAssist:
 I can only assist with Tonton-related enquiries.
 ```
 
+These guardrails keep the assistant focused on its intended customer-support domain.
+
 ---
 
 ## 📂 Project Structure
@@ -136,13 +184,13 @@ I can only assist with Tonton-related enquiries.
 tonton-rag-assistant/
 │
 ├── ingest.py
-│   └── Document loading, chunking, embeddings and ChromaDB
+│   └── Document loading, chunking, embeddings and ChromaDB setup
 │
 ├── rag_final_test.py
 │   └── Semantic retrieval and Gemini response generation
 │
 ├── rag_tonton.py
-│   └── Streamlit chat interface
+│   └── Streamlit conversational chat interface
 │
 ├── requirements.txt
 │   └── Python dependencies
@@ -161,10 +209,10 @@ tonton-rag-assistant/
 |---|---|
 | Programming Language | Python |
 | Frontend | Streamlit |
-| Embedding Model | Sentence Transformers |
-| Embedding | paraphrase-multilingual-MiniLM-L12-v2 |
+| Embedding Framework | Sentence Transformers |
+| Embedding Model | paraphrase-multilingual-MiniLM-L12-v2 |
 | Vector Database | ChromaDB |
-| LLM | Gemini Flash |
+| LLM | Gemini 3.6 Flash |
 | Knowledge Source | Google Docs |
 | API Communication | Requests |
 
@@ -185,18 +233,34 @@ cd tonton-rag-assistant
 pip install -r requirements.txt
 ```
 
-### 3. Configure Gemini API key
+### 3. Configure the Gemini API key
 
-Create a `.env` file:
+Create a `.env` file in the project directory:
 
 ```text
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 ```
 
+> **Important:** Never commit `.env` or API keys to GitHub.
+
 ### 4. Build the vector store
 
 ```bash
 python ingest.py
+```
+
+The ingestion pipeline will:
+
+```text
+Google Docs
+    ↓
+Load FAQ
+    ↓
+FAQ Chunking
+    ↓
+Generate Embeddings
+    ↓
+Store in ChromaDB
 ```
 
 ### 5. Test the RAG pipeline
@@ -211,7 +275,7 @@ python rag_final_test.py
 streamlit run rag_tonton.py
 ```
 
-Open:
+The application will be available locally at:
 
 ```text
 http://localhost:8501
@@ -239,25 +303,69 @@ Saya dah subscribe, tapi kenapa still ada ads?
 Why am I still getting ads after subscribing?
 ```
 
+### Out-of-Scope Test
+
+```text
+How much is Netflix?
+```
+
+The assistant should decline the competitor-related query and remain within the Tonton support scope.
+
 ---
 
 ## 🔑 Key Design Decisions
 
-**FAQ-level chunking**
+### FAQ-Level Chunking
 
-Each Question + Answer pair is treated as one chunk because each FAQ represents a complete semantic unit.
+Each Question + Answer pair is treated as one semantic chunk because each FAQ represents a complete unit of information.
 
-**Multilingual embeddings**
+This avoids splitting an FAQ question from its corresponding answer.
 
-A multilingual embedding model improves retrieval for Malay, English, and informal mixed-language customer queries.
+### Multilingual Embeddings
 
-**ChromaDB**
+A multilingual embedding model was selected to improve retrieval across:
+
+- Formal Bahasa Melayu
+- Conversational Bahasa Melayu
+- English
+- Mixed Malay-English
+
+This is particularly useful for real-world customer queries that may contain informal or mixed-language phrasing.
+
+### ChromaDB
 
 ChromaDB provides a lightweight vector database suitable for the current FAQ knowledge base and local development.
 
-**RAG**
+It enables semantic similarity search without requiring external vector database infrastructure.
 
-Retrieval-Augmented Generation grounds the LLM response using relevant FAQ information instead of relying only on the model's general knowledge.
+### Retrieval-Augmented Generation
+
+Instead of sending the user's question directly to the LLM, the system first retrieves relevant information from the Tonton knowledge base.
+
+```text
+Traditional LLM:
+
+User Question
+      ↓
+     LLM
+      ↓
+   Response
+
+
+TontonAssist RAG:
+
+User Question
+      ↓
+Semantic Retrieval
+      ↓
+Relevant Tonton FAQ
+      ↓
+Gemini + Retrieved Context
+      ↓
+Grounded Response
+```
+
+This helps keep responses relevant to the supplied Tonton knowledge base.
 
 ---
 
@@ -267,18 +375,18 @@ Potential improvements include:
 
 - Similarity thresholding
 - Hybrid keyword + semantic search
-- Reranking
+- Retrieved-document reranking
 - Retrieval evaluation dataset
 - Conversation-aware retrieval
 - Larger Tonton knowledge base
 - Automated FAQ synchronization
 - Monitoring and analytics
 - Improved fallback and escalation handling
+- Automated RAG evaluation
 
 ---
 
 ## 👤 Author
 
 Developed as a multilingual RAG chatbot assessment project.
-
 
