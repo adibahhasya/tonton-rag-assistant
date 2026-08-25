@@ -1,0 +1,20 @@
+# Environment variables / API keys
+.env
+
+# Local vector database
+chroma_db/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Virtual environment
+venv/
+.venv/
+
